@@ -1,0 +1,16 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+
+# Docs (do not push)
+*.md
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db

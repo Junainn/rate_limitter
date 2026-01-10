@@ -8,8 +8,9 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Load Lua script once
-const luaScript = fs.readFileSync("./lua/fixedWindow.lua", "utf8");
+// Load Lua scripts once
+const tokenBucketLua = fs.readFileSync("./lua/tokenBucket.lua", "utf8");
+const fixedWindowLua = fs.readFileSync("./lua/fixedWindow.lua", "utf8");
 
 app.post("/check", async (req, res) => {
   const { apiKey, identity, resource } = req.body;
@@ -23,32 +24,49 @@ app.post("/check", async (req, res) => {
     return res.status(403).json({ error: "Unknown apiKey" });
   }
 
-  if (rule.limit === Infinity) {
+  // Unlimited
+  if (rule.algorithm === "none") {
     return res.json({ allowed: true });
   }
 
   const key = `rate:${apiKey}:${identity}:${resource}`;
+  const now = Date.now();
 
-  const [allowed, current] = await redis.eval(
-    luaScript,
-    1,
-    key,
-    rule.limit,
-    rule.windowMs
-  );
+  let result;
+
+  if (rule.algorithm === "token-bucket") {
+    result = await redis.eval(
+      tokenBucketLua,
+      1,
+      key,
+      rule.capacity,
+      rule.refillRate / 1000, // tokens per ms
+      now
+    );
+  } else if (rule.algorithm === "fixed-window") {
+    result = await redis.eval(
+      fixedWindowLua,
+      1,
+      key,
+      rule.limit,
+      rule.windowMs
+    );
+  } else {
+    return res.status(500).json({ error: "Unknown algorithm" });
+  }
+
+  const [allowed, remaining] = result;
 
   if (allowed === 0) {
     return res.status(429).json({
       allowed: false,
-      current,
-      limit: rule.limit
+      remaining
     });
   }
 
   return res.json({
     allowed: true,
-    current,
-    limit: rule.limit
+    remaining
   });
 });
 

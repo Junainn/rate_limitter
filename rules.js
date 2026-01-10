@@ -5,7 +5,7 @@
  * This is TEMPORARY in-memory data (Day 2 only)
  */
 
-const rateLimitRules = {
+/*const rateLimitRules = {
   "free-key": {
     algorithm: "fixed-window",
     limit: 2,
@@ -23,8 +23,28 @@ const rateLimitRules = {
     limit: Infinity,
     windowMs: null
   }
-};
+};*/
 
+const rateLimitRules = {
+  "free-key": {
+    algorithm: "token-bucket",
+    capacity: 10,
+    refillRate: 5,
+    
+  },
+
+  "pro-key": {
+    algorithm: "token-bucket",
+    capacity: 100,
+    refillRate: 10
+    
+  },
+
+  "admin-key": {
+    algorithm: "none"
+    
+  }
+};
 /**
  * Resolve rule by apiKey
  */

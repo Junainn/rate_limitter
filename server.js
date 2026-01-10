@@ -3,7 +3,7 @@ import redis from "./redis.js";
 import { getRuleForApiKey } from "./rules.js";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
@@ -19,20 +19,33 @@ app.post("/check", async (req, res) => {
     return res.status(403).json({ error: "Unknown apiKey" });
   }
 
+  // Unlimited rule (admin)
+  if (rule.limit === Infinity) {
+    return res.json({ allowed: true });
+  }
+
   const key = `rate:${apiKey}:${identity}:${resource}`;
 
-  // Naive distributed counter (INTENTIONALLY WRONG)
   const current = await redis.incr(key);
 
-  // Set TTL on first increment
+  // Set TTL only once per window
   if (current === 1 && rule.windowMs) {
     await redis.pexpire(key, rule.windowMs);
   }
 
-  // ❗ DO NOT BLOCK YET
-  res.json({
+  // 🚨 ENFORCEMENT STARTS HERE
+  if (current > rule.limit) {
+    return res.status(429).json({
+      allowed: false,
+      reason: "Rate limit exceeded",
+      limit: rule.limit,
+      current
+    });
+  }
+
+  return res.json({
     allowed: true,
-    currentCount: current,
+    current,
     limit: rule.limit
   });
 });

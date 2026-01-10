@@ -8,8 +8,8 @@
 const rateLimitRules = {
   "free-key": {
     algorithm: "fixed-window",
-    limit: 10,
-    windowMs: 60_000
+    limit: 2,
+    windowMs: 10_000
   },
 
   "pro-key": {

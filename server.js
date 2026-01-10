@@ -1,11 +1,15 @@
 import express from "express";
 import redis from "./redis.js";
 import { getRuleForApiKey } from "./rules.js";
+import fs from "fs";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// Load Lua script once
+const luaScript = fs.readFileSync("./lua/fixedWindow.lua", "utf8");
 
 app.post("/check", async (req, res) => {
   const { apiKey, identity, resource } = req.body;
@@ -19,27 +23,25 @@ app.post("/check", async (req, res) => {
     return res.status(403).json({ error: "Unknown apiKey" });
   }
 
-  // Unlimited rule (admin)
   if (rule.limit === Infinity) {
     return res.json({ allowed: true });
   }
 
   const key = `rate:${apiKey}:${identity}:${resource}`;
 
-  const current = await redis.incr(key);
+  const [allowed, current] = await redis.eval(
+    luaScript,
+    1,
+    key,
+    rule.limit,
+    rule.windowMs
+  );
 
-  // Set TTL only once per window
-  if (current === 1 && rule.windowMs) {
-    await redis.pexpire(key, rule.windowMs);
-  }
-
-  // 🚨 ENFORCEMENT STARTS HERE
-  if (current > rule.limit) {
+  if (allowed === 0) {
     return res.status(429).json({
       allowed: false,
-      reason: "Rate limit exceeded",
-      limit: rule.limit,
-      current
+      current,
+      limit: rule.limit
     });
   }
 

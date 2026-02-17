@@ -26,23 +26,29 @@
 };*/
 
 const rateLimitRules = {
+  "strict-key": {
+    algorithm: "sliding-window",
+    limit: 5,
+    windowMs: 10000
+  },
+
   "free-key": {
     algorithm: "token-bucket",
     capacity: 10,
     refillRate: 5,
-    
+
   },
 
   "pro-key": {
     algorithm: "token-bucket",
     capacity: 100,
     refillRate: 10
-    
+
   },
 
   "admin-key": {
     algorithm: "none"
-    
+
   }
 };
 /**

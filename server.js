@@ -12,6 +12,7 @@ app.use(express.json());
 // Load Lua scripts once
 const tokenBucketLua = fs.readFileSync("./lua/tokenBucket.lua", "utf8");
 const fixedWindowLua = fs.readFileSync("./lua/fixedWindow.lua", "utf8");
+const slidingWindowLua = fs.readFileSync("./lua/slidingWindow.lua", "utf8");
 
 
 function withTimeout(promise, ms) {
@@ -81,7 +82,21 @@ app.post("/check", async (req, res) => {
         ),
         rateLimiterConfig.redisTimeoutMs
       );
-    } else {
+    } else if (rule.algorithm === "sliding-window") {
+      result = await withTimeout(
+        redis.eval(
+          slidingWindowLua,
+          1,
+          key,
+          rule.limit,
+          rule.windowMs,
+          now
+        ),
+        rateLimiterConfig.redisTimeoutMs
+      );
+    }
+
+    else {
       return res.status(500).json({ error: "Unknown algorithm" });
     }
 

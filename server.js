@@ -15,6 +15,16 @@ const fixedWindowLua = fs.readFileSync("./lua/fixedWindow.lua", "utf8");
 const slidingWindowLua = fs.readFileSync("./lua/slidingWindow.lua", "utf8");
 
 
+const metrics = {
+  totalRequests: 0,
+  allowed: 0,
+  blocked: 0,
+  degraded: 0,
+  redisLatencyMs: 0
+};
+
+
+
 function withTimeout(promise, ms) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -37,6 +47,7 @@ function withTimeout(promise, ms) {
 
 
 app.post("/check", async (req, res) => {
+  metrics.totalRequests++;
   const { apiKey, identity, resource } = req.body;
 
   if (!apiKey || !identity || !resource) {
@@ -50,6 +61,7 @@ app.post("/check", async (req, res) => {
 
   // Unlimited
   if (rule.algorithm === "none") {
+    metrics.allowed++;
     return res.json({ allowed: true });
   }
 
@@ -58,6 +70,7 @@ app.post("/check", async (req, res) => {
 
   try {
     let result;
+    const start = Date.now(); // ⏱ start timing
 
     if (rule.algorithm === "token-bucket") {
       result = await withTimeout(
@@ -94,21 +107,31 @@ app.post("/check", async (req, res) => {
         ),
         rateLimiterConfig.redisTimeoutMs
       );
-    }
-
-    else {
+    } else {
+      metrics.degraded++;
       return res.status(500).json({ error: "Unknown algorithm" });
     }
 
+    const latency = Date.now() - start; // ⏱ measure
+    metrics.redisLatencyMs = latency;
+
     const [allowed, remaining] = result;
 
+    // 🔹 Add Rate Limit Headers
+    res.set({
+      "X-RateLimit-Remaining": remaining,
+      "X-RateLimit-Limit": rule.limit || rule.capacity
+    });
+
     if (allowed === 0) {
+      metrics.blocked++;
       return res.status(429).json({
         allowed: false,
         remaining
       });
     }
 
+    metrics.allowed++;
     return res.json({
       allowed: true,
       remaining
@@ -116,6 +139,8 @@ app.post("/check", async (req, res) => {
 
   } catch (err) {
     console.error("Rate limiter failure:", err.message);
+
+    metrics.degraded++;
 
     if (rateLimiterConfig.failureMode === "fail-open") {
       return res.json({
@@ -129,8 +154,12 @@ app.post("/check", async (req, res) => {
       });
     }
   }
+
 });
 
+app.get("/metrics", (req, res) => {
+  res.send(metrics);
+})
 
 app.listen(PORT, () => {
   console.log(`Rate limiter running on http://localhost:${PORT}`);

@@ -10,7 +10,7 @@ yarn-error.log*
 # Docs (do not push)
 *.md
 *.pdf
-
+*.txt
 # OS
 .DS_Store
 Thumbs.db

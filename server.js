@@ -23,6 +23,10 @@ const metrics = {
   redisLatencyMs: 0
 };
 
+let redisFailures = 0;
+let circuitOpenUntil = 0;
+
+
 
 
 function withTimeout(promise, ms) {
@@ -44,7 +48,19 @@ function withTimeout(promise, ms) {
 }
 
 
+app.get("/health", (req, res) => {
 
+  res.json({ status: "ready" });
+})
+
+app.get("/ready", async (req, res) => {
+  try {
+    await redis.ping();
+    res.json({ status: "ready" });
+  } catch (err) {
+    res.status(503).json({ status: "not ready" });
+  }
+})
 
 app.post("/check", async (req, res) => {
   metrics.totalRequests++;
@@ -67,6 +83,16 @@ app.post("/check", async (req, res) => {
 
   const key = `rate:${apiKey}:${identity}:${resource}`;
   const now = Date.now();
+  //  Circuit Breaker Check
+  if (Date.now() < circuitOpenUntil) {
+    metrics.degraded++;
+    return res.json({
+      allowed: rateLimiterConfig.failureMode === "fail-open",
+      degraded: true,
+      circuitOpen: true
+    });
+  }
+
 
   try {
     let result;
@@ -112,8 +138,10 @@ app.post("/check", async (req, res) => {
       return res.status(500).json({ error: "Unknown algorithm" });
     }
 
-    const latency = Date.now() - start; // ⏱ measure
+    const latency = Date.now() - start; // measure
     metrics.redisLatencyMs = latency;
+    redisFailures = 0; //  Redis is healthy again
+
 
     const [allowed, remaining] = result;
 
@@ -124,6 +152,7 @@ app.post("/check", async (req, res) => {
     });
 
     if (allowed === 0) {
+
       metrics.blocked++;
       return res.status(429).json({
         allowed: false,
@@ -141,6 +170,13 @@ app.post("/check", async (req, res) => {
     console.error("Rate limiter failure:", err.message);
 
     metrics.degraded++;
+    redisFailures++;
+
+    if (redisFailures > 5) {
+      circuitOpenUntil = Date.now() + 5000; 
+      console.warn("Circuit opened for 5 seconds");
+    }
+
 
     if (rateLimiterConfig.failureMode === "fail-open") {
       return res.json({

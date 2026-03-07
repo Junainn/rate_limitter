@@ -63,6 +63,6 @@ export { getRuleForApiKey };
 
 // config.js
 export const rateLimiterConfig = {
-  failureMode: "fail-closed", // or "fail-closed"
+  failureMode: "fail-open", // or "fail-closed"
   redisTimeoutMs: 100
 };

@@ -1,6 +1,7 @@
 import express from "express";
 import redis from "./redis.js";
 import { getRuleForApiKey } from "./rules.js";
+import { getRule } from "./services/rule_service.js";
 import { rateLimiterConfig } from "./rules.js";
 import fs from "fs";
 
@@ -70,7 +71,8 @@ app.post("/check", async (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
   }
 
-  const rule = getRuleForApiKey(apiKey);
+  //const rule = getRuleForApiKey(apiKey); for hardcoded rules
+  const rule = await getRule(apiKey);
   if (!rule) {
     return res.status(403).json({ error: "Unknown apiKey" });
   }
@@ -80,8 +82,8 @@ app.post("/check", async (req, res) => {
     metrics.allowed++;
     return res.json({ allowed: true });
   }
-
-  const key = `rate:${apiKey}:${identity}:${resource}`;
+  const plan = await redis.get(`user:${apiKey}`);
+  const key = `rate:${plan}:${identity}:${resource}`;
   const now = Date.now();
   //  Circuit Breaker Check
   if (Date.now() < circuitOpenUntil) {

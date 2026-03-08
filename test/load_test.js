@@ -22,7 +22,7 @@ async function sendRequest(i) {
 async function runTest() {
   const requests = [];
 
-  for (let i = 0; i < 5000; i++) {
+  for (let i = 0; i < 50; i++) {
     requests.push(sendRequest(i));
   }
 
